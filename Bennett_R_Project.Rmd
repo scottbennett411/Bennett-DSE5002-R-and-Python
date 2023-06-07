@@ -1,0 +1,427 @@
+---
+title: "Bennett R Project"
+author: "Scott Bennett"
+date: "2023-04-09"
+output: pdf_document
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+```
+
+Let's load the dataset
+```{r}
+project_base_df <- read.csv("r_project_data.csv")
+dim(project_base_df)
+glimpse(project_base_df)
+head(project_base_df)
+```
+
+Let's see how many results are null
+```{r }
+    complete_project_df <- project_base_df %>%
+        drop_na()
+               
+     dim(complete_project_df)
+```
+No NA results, so let's proceed with using the project_base_df
+
+Let's check the unique qualities for work_year, experience_level, employment_type, job_title, employee_residence, remote_ratio, company_location, and company_size
+```{r }
+unique_work_year <- project_base_df %>%
+  pull(work_year) %>%
+  unique()
+
+unique_work_year
+
+unique_experience_level <- project_base_df %>%
+  pull(experience_level) %>%
+  unique()
+
+unique_experience_level
+
+unique_employment_type <- project_base_df %>%
+  pull(employment_type) %>%
+  unique()
+
+unique_employment_type
+
+unique_job_title <- project_base_df %>%
+  pull(job_title) %>%
+  unique()
+
+unique_job_title
+
+unique_employee_residence <- project_base_df %>%
+  pull(employee_residence) %>%
+  unique()
+
+unique_employee_residence
+
+unique_remote_ratio <- project_base_df %>%
+  pull(remote_ratio) %>%
+  unique()
+
+unique_remote_ratio
+
+unique_company_location <- project_base_df %>%
+  pull(company_location) %>%
+  unique()
+
+unique_company_location
+
+unique_company_sizes <- project_base_df %>%
+  pull(company_size) %>%
+  unique()
+
+unique_company_sizes
+```
+
+Here is a quick look at the global market for data related jobs:
+
+```{r}
+ds_total_summarize_df <- project_base_df %>%
+  group_by(work_year) %>% 
+  summarize(average_salary = mean(salary_in_usd),
+            min_salary = min(salary_in_usd),
+            first_q_salary = quantile(salary_in_usd, 0.25),
+            median_salary = median(salary_in_usd),
+            third_q_salary = quantile(salary_in_usd, 0.75),
+            max_salary = max(salary_in_usd),
+            total_count = n()
+            )
+
+ds_total_summarize_df
+```
+
+```{r}
+
+ggplot(ds_total_summarize_df,aes(x=work_year),y=salary)+
+  geom_line(aes(y = average_salary, linetype = "Average Salary"))+
+  geom_line( aes(y = median_salary, linetype = "Median Salary")) +
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Mean and Median Salary by Experience Level over Year')
+```
+
+
+```{r}
+ggplot(ds_total_summarize_df,aes(x = work_year)) +
+  geom_line(aes(y = total_count)) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Job Count",
+    title='Global Data Jobs by Year')
+```
+Data related jobs grew global from 72 reported in our data set in 2020 to 318 reported in 2022
+
+This could be your first instinct, just average the salaries by year and see what looks like a competitive salary, but that doesn't take into account the full picture. I have been given the parameters of the role that the company wants filled, so it doesn't make sense to look at all the data. We will want to filter it down first to get a better idea of what we will need to offer candidates that we actually want. We can see a global trend with the increase of popularity in Data related jobs.
+
+Our company is based in the US and is small but projected to grow larger so let's filter in only US based companies. We'll also sort by the different company sizes to know what a competitive small to mid level company offers. Additionally, After looking at all the different job titles and employment positions, it makes the most sense to analyze mid to senior level employees with "data science" in their title since we want this hire to drive data science within the organization. Later there might be room for growth with specialized data engineers or data analysts as the lead data scientist develops the companies data section.
+
+
+Filter only US based companies
+```{r }
+us_based_project_df <- project_base_df %>%
+  filter(company_location == "US"& employee_residence == 'US')
+
+head(us_based_project_df)
+
+dim(us_based_project_df)
+```
+
+330 returns for US only based companies and employees that work in the US.
+
+Now we will filter for "Data Science" positions
+
+There are "Data Scientist", "Data Science Engineer", "Lead Data Science", etc... so we will filter for returns that contain "Data Scien"
+```{r}
+ds_us_based_df <- us_based_project_df %>%
+  filter(grepl('Data Scien', job_title, ignore.case = TRUE))
+
+head(ds_us_based_df)
+
+ds_us_based_df
+dim(ds_us_based_df)
+```
+
+There were 103 data science roles listed either from companies in the US or employees that work within the US.
+
+This new role is going to have a decent amount of responsibility, especially after they begin to make their own data team, so we want to filter out any entry level employees. It also is probably not suited for any executive employees so we'll filter that out. Additionally, this we'll be a full time roll so we will want to filter for only Full Time.
+
+```{r}
+ds_us_exp_df <- ds_us_based_df %>% 
+  filter(experience_level == "MI" | experience_level == "SE") %>%
+  filter(employment_type == "FT")
+
+ds_us_exp_df
+
+dim(ds_us_exp_df)
+```
+
+Okay, now we are almost ready to do some statistics to look at how much we should expect to offer for these roles. We will hold onto only the variables that we care about. We will keep 'work_year' to track change over time, our filtered 'experience level', 'salary_in_usd', and 'company_size'. We have been told that we can look at offshore employees so 'remote ratio' shouldn't be an impact, 'salary', and 'salary_currency' are both accounted for and changed in 'salary_in_usd', and we have already filtered down 'employment_type', 'company_location', and 'job_title'.
+
+```{r}
+ds_project_analysis_df <- ds_us_exp_df %>%
+  mutate(job_type = 'Data Scientist') %>%
+  select(work_year, experience_level, salary_in_usd, job_type)
+
+ds_project_analysis_df
+
+dim(ds_project_analysis_df)
+```
+
+Now let's group by year, experience and company size and perform some summary statistics
+```{r}
+ds_us_summarize_df <- ds_project_analysis_df %>%
+  group_by(work_year, experience_level) %>%
+  summarize(average_salary = mean(salary_in_usd),
+            min_salary = min(salary_in_usd),
+            first_q_salary = quantile(salary_in_usd, 0.25),
+            median_salary = median(salary_in_usd),
+            third_q_salary = quantile(salary_in_usd, 0.75),
+            max_salary = max(salary_in_usd),
+            total_count = n()
+            )
+
+ds_us_summarize_df
+
+```
+
+
+```{r}
+
+ggplot(ds_us_summarize_df,aes(x=work_year),y=salary)+
+  geom_line(aes(y = average_salary, color = experience_level, linetype = "Average Salary"))+
+  geom_line( aes(y = median_salary, color = experience_level, linetype = "Median Salary")) +
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Mean and Median Salary by Experience Level over Year')
+```
+
+
+Boxplot of Salary by Experience Level
+```{r}
+ggplot(ds_project_analysis_df,aes(x=as.character(work_year),y=salary_in_usd)) +
+  geom_boxplot(outlier.shape = NA)+
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  geom_jitter(aes(color = experience_level), size = 0.4, alpha = 0.9)+
+  facet_grid(.~(experience_level))+
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Salary by Experience Level over Year')
+```
+
+```{r}
+ds_project_analysis_df %>%
+  group_by(work_year) %>%
+  summarize(total_count = n()) %>%
+  ggplot(aes(x = work_year)) +
+  geom_line(aes(y = total_count)) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Job Count",
+    title='US Data Science Jobs by Year')
+```
+Reported data science jobs in the US grew from 8 in 2020 to 65 in 2022.
+
+
+Seeing what non-US salaries are like in order to compare them for potential offshore employment
+```{r}
+foreign_based_project_df <- project_base_df %>%
+  filter(!company_location == "US"& !employee_residence == 'US') %>%
+  filter(grepl('Data Scien', job_title, ignore.case = TRUE)) %>%
+  filter(experience_level == "MI" | experience_level == "SE") %>%
+  filter(employment_type == "FT") %>%
+  select(work_year, experience_level, salary_in_usd, company_size)
+  
+head(foreign_based_project_df)
+
+dim(foreign_based_project_df)
+
+ds_foreign_summarize_df <- foreign_based_project_df %>%
+  group_by(work_year, experience_level) %>%#, company_size) %>%
+  summarize(average_salary = mean(salary_in_usd),
+            min_salary = min(salary_in_usd),
+            first_q_salary = quantile(salary_in_usd, 0.25),
+            median_salary = median(salary_in_usd),
+            third_q_salary = quantile(salary_in_usd, 0.75),
+            max_salary = max(salary_in_usd),
+            total_count = n()
+            )
+
+ds_foreign_summarize_df
+```
+
+Side by side comparison, average and median salaries are lower than their American counterparts
+```{r}
+ggplot(ds_foreign_summarize_df,aes(x=work_year),y=salary)+
+  geom_line(aes(y = average_salary, color = experience_level, linetype = "Average Salary"))+
+  geom_line( aes(y = median_salary, color = experience_level, linetype = "Median Salary")) +
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Mean and Median Foreign Salary by Experience Level over Year')
+```
+Not the same year over year growth in salary as seen in the US. Lower salaries in general, increasing Senior level salaries in 2022 as well as increasing Middle level salaries in 2022. 
+
+
+```{r}
+ggplot(foreign_based_project_df,aes(x=as.character(work_year),y=salary_in_usd)) +
+  geom_boxplot(outlier.shape = NA)+
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  geom_jitter(aes(color = experience_level), size = 0.4, alpha = 0.9)+
+  facet_grid(.~(experience_level))+
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Foreign Salary by Experience Level over Year')
+```
+Outliers are not as far away as American outliers, still best to work with Quantile figures rather than Average. Looks like less Data Science jobs in the foreign market
+
+
+```{r}
+foreign_based_project_df %>%
+  group_by(work_year) %>%
+  summarize(total_count = n()) %>%
+  ggplot(aes(x = work_year)) +
+  geom_line(aes(y = total_count)) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Job Count",
+    title='Foreign Data Science Jobs by Year')
+```
+Way less foreign senior and mid-level data science jobs. 10 in 2020, 30 in 2021, and 14 in 2022.
+
+
+
+# Looking Ahead
+
+Moving forward, we want to start preparing for the team that we are going to build for the Data Scientist. We'll look at salaries of data analysts and data engineers and get an idea of the growth in those fields.
+
+Data Analyst Bucket
+```{r}
+da_us_based_df <- us_based_project_df %>%
+  filter(grepl('Data Analy', job_title, ignore.case = TRUE))%>%
+  filter(!grepl('Analytics Engineer', job_title, ignore.case = TRUE)) %>%
+  mutate(job_type = 'Data Analyst') %>%
+  filter(experience_level == "MI" | experience_level == "SE") %>%
+  #filter(!experience_level == "EX") %>%
+  filter(employment_type == "FT") %>%
+  select(work_year, experience_level, salary_in_usd, job_type)
+
+head(da_us_based_df)
+
+dim(da_us_based_df)
+```
+
+There were 85 data analyst roles listed either from companies in the US or employees that work within the US.
+
+This is a potential future role.
+
+```{r}
+da_summarize_df <- da_us_based_df %>%
+  group_by(work_year, experience_level) %>%
+  summarize(average_salary = mean(salary_in_usd),
+            min_salary = min(salary_in_usd),
+            first_q_salary = quantile(salary_in_usd, 0.25),
+            median_salary = median(salary_in_usd),
+            third_q_salary = quantile(salary_in_usd, 0.75),
+            max_salary = max(salary_in_usd),
+            total_count = n()
+            )
+
+da_summarize_df
+
+```
+
+```{r}
+ggplot(da_summarize_df,aes(x=work_year),y=salary) +
+  geom_line(aes(y = average_salary, color = experience_level, linetype = "Average Salary"))+
+  geom_line(aes(y = median_salary, color = experience_level, linetype = "Median Salary")) +
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Mean and Median Data Analyst Salary by Experience Level over Year')
+
+da_us_based_df %>%
+  group_by(work_year) %>%
+  summarize(total_count = n()) %>%
+  ggplot(aes(x = work_year)) +
+  geom_line(aes(y = total_count)) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Job Count",
+    title='US Data Analysis Jobs by Year')
+```
+
+```{r}
+de_us_based_df <- us_based_project_df %>%
+  filter(grepl('Data Engin', job_title, ignore.case = TRUE) | grepl('Analytics Engineer', job_title, ignore.case = TRUE) |   grepl('Data Science Engineer', job_title, ignore.case = TRUE)) %>%
+  mutate(job_type = 'Data Engineer') %>%
+  filter(experience_level == "MI" | experience_level == "SE") %>%
+  filter(employment_type == "FT") %>%
+  select(work_year, experience_level, salary_in_usd, job_type)
+
+head(de_us_based_df)
+
+dim(de_us_based_df)
+```
+
+```{r}
+de_summarize_df <- de_us_based_df %>%
+  group_by(work_year, experience_level) %>%
+  summarize(average_salary = mean(salary_in_usd),
+            min_salary = min(salary_in_usd),
+            first_q_salary = quantile(salary_in_usd, 0.25),
+            median_salary = median(salary_in_usd),
+            third_q_salary = quantile(salary_in_usd, 0.75),
+            max_salary = max(salary_in_usd),
+            total_count = n()
+            )
+
+de_summarize_df
+```
+
+
+```{r}
+ggplot(de_summarize_df,aes(x=work_year),y=salary) +
+  geom_line(aes(y = average_salary, color = experience_level, linetype = "Average Salary"))+
+  geom_line(aes(y = median_salary, color = experience_level, linetype = "Median Salary")) +
+  scale_y_continuous(labels = function(x) paste0(x, "$")) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Salary",
+    title='Mean and Median Data Engineer Salary by Experience Level over Year')
+
+de_us_based_df %>%
+  group_by(work_year) %>%
+  summarize(total_count = n()) %>%
+  ggplot(aes(x = work_year)) +
+  geom_line(aes(y = total_count)) +
+  scale_x_continuous(breaks = seq(2020,2022,1), labels = paste0(seq(2020,2022,1))) +
+  labs(
+    x = "Year",
+    y= "Job Count",
+    title='US Data Engineer Jobs by Year')
+```
+
